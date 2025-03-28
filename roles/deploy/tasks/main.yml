@@ -1,0 +1,79 @@
+# https://stackoverflow.com/questions/24426582/how-to-share-parameters-between-multiple-tasks-in-ansible
+
+---
+- name: Create Docker registry namespace
+  kubernetes.core.k8s:
+    name: docker-registry
+    api_version: v1
+    kind: Namespace
+    state: present
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+
+- name: Create Docker registry persistent volume claim
+  vars:
+    namespace: docker-registry
+    api_version: v1
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+  kubernetes.core.k8s:
+    name: docker-registry-persistent-volume-claim  # TODO: move it to local var(const?)
+    kind: PersistentVolumeClaim
+    state: present
+    spec:
+      accessModes:
+        - ReadWriteOnce
+      resources:
+        requests:
+          storage: 20Gi
+
+- name: Create Docker registry deployment
+  kubernetes.core.k8s:
+    name: docker-registry-deployment
+    kind: Deployment
+    # namespace: docker-registry  # TODO: move it to local var(const?)
+    # api_version: v1
+    labels:
+      app: docker-registry
+    spec:
+      selector:
+        matchLabels:
+          app: docker-registry
+      strategy:
+        type: Recreate
+      template:
+        metadata:
+          labels:
+            app: docker-registry
+        spec:
+          volumes:
+            - name: registry-data
+              persistentVolumeClaim:
+                claimName: docker-registry-persistent-volume-claim  # TODO: move it to local var(const?)
+          containers:
+            - name: registry
+              volumeMounts:
+                - name: registry-data
+                  mountPath: /var/lib/registry
+              image: registry:2
+              ports:
+                - containerPort: 5000
+              env:
+                - name: REGISTRY_STORAGE_DELETE_ENABLED
+                  value: "{{ delete_enabled }}"
+              resources:
+                requests:
+                  memory: 500Mi
+
+- name: Create Docker registry service
+  kubernetes.core.k8s:
+    name: docker-registry-service
+    kind: Service
+    # namespace: docker-registry  # TODO: move it to local var(const?)
+    # api_version: v1
+    selector:
+      app: docker-registry
+    spec:
+      ports:
+        - port: 5000
+          targetPort: 5000
+          protocol: TCP
+...

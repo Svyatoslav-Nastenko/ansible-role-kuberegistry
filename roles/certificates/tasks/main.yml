@@ -1,0 +1,27 @@
+---
+- name: Create the private key
+  tags: certificates
+  community.crypto.openssl_privatekey:
+    path: docker-registry.key
+    size: 4096
+
+- name: Create certificate signing request (CSR) for self-signed certificate
+  tags: certificates
+  community.crypto.openssl_csr_pipe:
+    privatekey_path: docker-registry.key
+    common_name: docker-registry
+    subject_alt_name:
+      - "DNS:docker-registry"
+  register: csr
+
+- name: Create self-signed certificate from CSR
+  tags: certificates
+  community.crypto.x509_certificate:
+    path: docker-registry.pem
+    csr_content: "{{ csr.csr }}"
+    privatekey_path: docker-registry.key
+    provider: selfsigned
+    selfsigned_not_after: +365d # valid for one year
+    selfsigned_not_before: "-1d" # valid since yesterday
+    selfsigned_digest: "sha256" # this is the default and can be omitted
+...
